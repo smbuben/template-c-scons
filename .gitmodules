@@ -1,0 +1,3 @@
+[submodule "site_scons/quickscons"]
+	path = site_scons/quickscons
+	url = https://github.com/smbuben/quickscons.git

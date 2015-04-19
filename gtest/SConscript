@@ -1,0 +1,99 @@
+# Copyright (c) 2015 Stephen M Buben <smbuben@gmail.com>
+# See project LICENSE for details.
+
+import os
+import hashlib
+
+from SCons.Errors import StopError
+
+# Description of Google Test components needed to drive the build.
+gtest = 'gtest-1.7.0'
+gtest_url = 'https://googletest.googlecode.com/files/' + gtest + '.zip'
+gtest_sha1 = 'f85f6d2481e2c6c4a18539e391aa4ea8ab0394af'
+gtest_srcs = ['gtest' + x + '.cc' for x in [
+    '-all',
+    '',
+    '-death-test',
+    '-filepath',
+    '_main',
+    '-port',
+    '-printers',
+    '-test-part',
+    '-typed-test'
+]]
+
+
+Import('env')
+bld_env = env.Clone()
+
+def download(target, source, env):
+    """Download and verify the gtest source archive."""
+    import urllib2
+    import hashlib
+
+    # Download.
+    try:
+        dl = urllib2.urlopen(gtest_url)
+        with open(target[0].abspath, 'w') as outf:
+            outf.write(dl.read())
+        dl.close()
+    except Exception, e:
+        raise StopError(e)
+
+    # Verify.
+    sha1sum = hashlib.sha1()
+    with open(target[0].abspath, 'r') as inf:
+        sha1sum.update(inf.read())
+    if not sha1sum.hexdigest() == gtest_sha1:
+        os.unlink(target[0].abspath)
+        raise StopError('gtest download corrupt')
+
+    return None
+
+def extract(target, source, env):
+    """Extract the downloaded gtest archive."""
+    import zipfile
+    dirname = os.path.normpath(
+        os.path.join(os.path.dirname(target[0].abspath), os.path.pardir, os.path.pardir))
+    zf = zipfile.ZipFile(source[0].abspath)
+    zf.extractall(dirname)
+
+node_build = env.Dir('.')
+node_gtest = node_build.Dir(gtest)
+node_src = node_gtest.Dir('src')
+node_inc = node_gtest.Dir('include')
+
+dl = node_build.File(gtest + '.zip')
+srcs = [node_src.File(x) for x in gtest_srcs]
+libname = 'gtest_main'
+
+# No reason to remove these on clean. Would force re-download and re-extract.
+bld_env.NoClean(dl)
+bld_env.NoClean(srcs)
+
+bld_env.AppendUnique(
+    CPPFLAGS=[
+        '-isystem', node_inc,
+    ],
+    CPPPATH=[
+        node_gtest,
+        node_inc,
+    ],
+    CCFLAGS=[
+        '-Wno-missing-field-initializers',
+        '-pthread',
+    ])
+
+bld_env.Command(dl, [], download)
+bld_env.Command(srcs, dl, extract)
+bld_env.StaticLibrary(libname, srcs)
+
+env.ManifestBuildSettings(
+    {
+        'CPPPATH' :     [node_inc],
+        'LIBS' :        [libname],
+        'LIBPATH' :     [node_build],
+        'CCFLAGS' :     ['-pthread'],
+        'LINKFLAGS' :   ['-pthread'],
+    })
+
